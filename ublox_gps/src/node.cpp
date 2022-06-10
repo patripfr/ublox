@@ -288,6 +288,10 @@ void UbloxNode::subscribe() {
     gps.subscribe<ublox_msgs::NavCLOCK>(boost::bind(
         publish<ublox_msgs::NavCLOCK>, _1, "navclock"), kSubscribeRate);
 
+  nh->param("publish/nmea", enabled["nmea"], false);
+  if (enabled["nmea"])
+    gps.subscribe_nmea(boost::bind(publish_nmea, _1, "nmea"));
+
   // INF messages
   nh->param("inf/debug", enabled["inf_debug"], false);
   if (enabled["inf_debug"])
@@ -1145,8 +1149,11 @@ void UbloxFirmware8::getRosParams() {
 
     std::vector<uint8_t> bdsTalkerId;
     getRosUint("nmea/bds_talker_id", bdsTalkerId);
-    cfg_nmea_.bdsTalkerId[0] = bdsTalkerId[0];
-    cfg_nmea_.bdsTalkerId[1] = bdsTalkerId[1];
+    if(bdsTalkerId.size() >= 2) {
+      cfg_nmea_.bdsTalkerId[0] = bdsTalkerId[0];
+      cfg_nmea_.bdsTalkerId[1] = bdsTalkerId[1];
+    }
+
   }
 }
 
@@ -1674,7 +1681,7 @@ void HpgRovProduct::initializeRosDiagnostics() {
 void HpgRovProduct::carrierPhaseDiagnostics(
     diagnostic_updater::DiagnosticStatusWrapper& stat) {
   uint32_t carr_soln = last_rel_pos_.flags & last_rel_pos_.FLAGS_CARR_SOLN_MASK;
-  stat.add("iTow", last_rel_pos_.iTow);
+  stat.add("iTOW", last_rel_pos_.iTOW);
   if (carr_soln & last_rel_pos_.FLAGS_CARR_SOLN_NONE ||
       !(last_rel_pos_.flags & last_rel_pos_.FLAGS_DIFF_SOLN &&
         last_rel_pos_.flags & last_rel_pos_.FLAGS_REL_POS_VALID)) {
@@ -1804,8 +1811,7 @@ void HpPosRecProduct::callbackNavRelPosNed(const ublox_msgs::NavRELPOSNED9 &m) {
     imu_.angular_velocity_covariance[0] = -1;
 
     // Transform angle since ublox is representing heading as NED but ROS uses ENU as convention (REP-103).
-    // Also convert the base-to-rover angle to a robot-to-base angle (consistent with frame_id)
-    double heading = - (static_cast<double>(m.relPosHeading) * 1e-5 / 180.0 * M_PI) - M_PI_2;
+    double heading = M_PI_2 - (static_cast<double>(m.relPosHeading) * 1e-5 / 180.0 * M_PI);
     tf::Quaternion orientation;
     orientation.setRPY(0, 0, heading);
     imu_.orientation.x = orientation[0];
