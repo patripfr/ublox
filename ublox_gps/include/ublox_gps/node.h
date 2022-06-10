@@ -791,37 +791,47 @@ class UbloxFirmware7Plus : public UbloxFirmware {
     fix.header.frame_id = frame_id;
     // set the timestamp
     uint8_t valid_time = m.VALID_DATE | m.VALID_TIME | m.VALID_FULLY_RESOLVED;
-    if (((m.valid & valid_time) == valid_time) &&
-        (m.flags2 & m.FLAGS2_CONFIRMED_AVAILABLE)) {
-      // Use NavPVT timestamp since it is valid
-      // The time in nanoseconds from the NavPVT message can be between -1e9 and 1e9
-      //  The ros time uses only unsigned values, so a negative nano seconds must be
-      //  converted to a positive value
-      if (m.nano < 0) {
-        fix.header.stamp.sec = toUtcSeconds(m) - 1;
-        fix.header.stamp.nsec = (uint32_t)(m.nano + 1e9);
+    if (enable_toa_) {
+      // Use ROS time since NavPVT timestamp is not valid
+      fix.header.stamp = ros::Time::now() - ros::Duration(
+        receiver_delay_ms_ * 0.001);
+    } else {
+      if (((m.valid & valid_time) == valid_time) &&
+          (m.flags2 & m.FLAGS2_CONFIRMED_AVAILABLE)) {
+        // Use NavPVT timestamp since it is valid
+        // The time in nanoseconds from the NavPVT message can be between -1e9 and 1e9
+        //  The ros time uses only unsigned values, so a negative nano seconds must be
+        //  converted to a positive value
+        if (m.nano < 0) {
+          fix.header.stamp.sec = toUtcSeconds(m) - 1;
+          fix.header.stamp.nsec = (uint32_t)(m.nano + 1e9);
+        }
+        else {
+          fix.header.stamp.sec = toUtcSeconds(m);
+          fix.header.stamp.nsec = (uint32_t)(m.nano);
+        }
+        // ros::WallTime time_w;
+        // time_w.sec = fix.header.stamp.sec;
+        // time_w.nsec = fix.header.stamp.nsec;
+        // ROS_INFO_STREAM("DELAY: " << (ros::WallTime::now() - time_w).toSec());
+      } else {
+        // Use ROS time since NavPVT timestamp is not valid
+        fix.header.stamp = ros::Time::now();
+      }
+      // Set the LLA
+      fix.latitude = m.lat * 1e-7; // to deg
+      fix.longitude = m.lon * 1e-7; // to deg
+      fix.altitude = m.height * 1e-3; // to [m]
+      // Set the Fix status
+      bool fixOk = m.flags & m.FLAGS_GNSS_FIX_OK;
+      if (fixOk && m.fixType >= m.FIX_TYPE_2D) {
+        fix.status.status = fix.status.STATUS_FIX;
+        if(m.flags & m.CARRIER_PHASE_FIXED)
+          fix.status.status = fix.status.STATUS_GBAS_FIX;
       }
       else {
-        fix.header.stamp.sec = toUtcSeconds(m);
-        fix.header.stamp.nsec = (uint32_t)(m.nano);
+        fix.status.status = fix.status.STATUS_NO_FIX;
       }
-    } else {
-      // Use ROS time since NavPVT timestamp is not valid
-      fix.header.stamp = ros::Time::now();
-    }
-    // Set the LLA
-    fix.latitude = m.lat * 1e-7; // to deg
-    fix.longitude = m.lon * 1e-7; // to deg
-    fix.altitude = m.height * 1e-3; // to [m]
-    // Set the Fix status
-    bool fixOk = m.flags & m.FLAGS_GNSS_FIX_OK;
-    if (fixOk && m.fixType >= m.FIX_TYPE_2D) {
-      fix.status.status = fix.status.STATUS_FIX;
-      if(m.flags & m.CARRIER_PHASE_FIXED)
-        fix.status.status = fix.status.STATUS_GBAS_FIX;
-    }
-    else {
-      fix.status.status = fix.status.STATUS_NO_FIX;
     }
     // Set the service based on GNSS configuration
     fix.status.service = fix_status_service;
@@ -895,11 +905,11 @@ class UbloxFirmware7Plus : public UbloxFirmware {
       stat.level = diagnostic_msgs::DiagnosticStatus::OK;
       stat.message = "Time only fix";
     }
-    
+
     // Check whether differential GNSS available
     if (last_nav_pvt_.flags & ublox_msgs::NavPVT::FLAGS_DIFF_SOLN) {
       stat.message += ", DGNSS";
-    } 
+    }
     // If DGNSS, then update the differential solution status
     if (last_nav_pvt_.flags & ublox_msgs::NavPVT::CARRIER_PHASE_FLOAT) {
       stat.message += ", FLOAT FIX";
@@ -948,6 +958,10 @@ class UbloxFirmware7Plus : public UbloxFirmware {
   bool enable_sbas_;
   //! The QZSS Signal configuration, see CfgGNSS message
   uint32_t qzss_sig_cfg_;
+  // Whether or not to use time of arrival timestamp
+  bool enable_toa_;
+  // Offset from time of arrival to compensate for receiver delay in ms
+  double receiver_delay_ms_;
 };
 
 /**
@@ -1085,7 +1099,7 @@ class RawDataProduct: public virtual ComponentInterface {
 class AdrUdrProduct: public virtual ComponentInterface {
  public:
   AdrUdrProduct(float protocol_version);
-  
+
   /**
    * @brief Get the ADR/UDR parameters.
    *
@@ -1119,10 +1133,10 @@ class AdrUdrProduct: public virtual ComponentInterface {
 
  protected:
   //! Whether or not to enable dead reckoning
-  bool use_adr_;  
+  bool use_adr_;
   float protocol_version_;
 
-   
+
   sensor_msgs::Imu imu_;
   sensor_msgs::TimeReference t_ref_;
   ublox_msgs::TimTM2 timtm2;
@@ -1376,13 +1390,13 @@ class TimProduct: public virtual ComponentInterface {
    * @brief Get the Time Sync parameters.
    * @todo Currently unimplemented.
    */
-  void getRosParams(); 
- 
+  void getRosParams();
+
   /**
    * @brief Configure Time Sync settings.
    * @todo Currently unimplemented.
    */
-  bool configureUblox(); 
+  bool configureUblox();
 
   /**
    * @brief Subscribe to Time Sync messages.
@@ -1397,13 +1411,13 @@ class TimProduct: public virtual ComponentInterface {
    */
   void initializeRosDiagnostics();
 
- protected:  
+ protected:
   /**
-   * @brief 
+   * @brief
    * @details Publish recieved TimTM2 messages if enabled
    */
   void callbackTimTM2(const ublox_msgs::TimTM2 &m);
- 
+
   sensor_msgs::TimeReference t_ref_;
 };
 
