@@ -829,21 +829,22 @@ class UbloxFirmware7Plus : public UbloxFirmware {
         // Use ROS time since NavPVT timestamp is not valid
         fix.header.stamp = ros::Time::now();
       }
-      // Set the LLA
-      fix.latitude = m.lat * 1e-7; // to deg
-      fix.longitude = m.lon * 1e-7; // to deg
-      fix.altitude = m.height * 1e-3; // to [m]
-      // Set the Fix status
-      bool fixOk = m.flags & m.FLAGS_GNSS_FIX_OK;
-      if (fixOk && m.fixType >= m.FIX_TYPE_2D) {
-        fix.status.status = fix.status.STATUS_FIX;
-        if(m.flags & m.CARRIER_PHASE_FIXED)
-          fix.status.status = fix.status.STATUS_GBAS_FIX;
-      }
-      else {
-        fix.status.status = fix.status.STATUS_NO_FIX;
-      }
     }
+    // Set the LLA
+    fix.latitude = m.lat * 1e-7; // to deg
+    fix.longitude = m.lon * 1e-7; // to deg
+    fix.altitude = m.height * 1e-3; // to [m]
+    // Set the Fix status
+    bool fixOk = m.flags & m.FLAGS_GNSS_FIX_OK;
+    if (fixOk && m.fixType >= m.FIX_TYPE_2D) {
+      fix.status.status = fix.status.STATUS_FIX;
+      if(m.flags & m.CARRIER_PHASE_FIXED)
+        fix.status.status = fix.status.STATUS_GBAS_FIX;
+    }
+    else {
+      fix.status.status = fix.status.STATUS_NO_FIX;
+    }
+
     // Set the service based on GNSS configuration
     fix.status.service = fix_status_service;
 
