@@ -1294,8 +1294,6 @@ void RawDataProduct::subscribe() {
   // Subscribe to RXM Raw
   nh->param("publish/rxm/raw", enabled["rxm_raw"], enabled["rxm"]);
   if (enabled["rxm_raw"]) {
-    ROS_WARN_STREAM("SUBSCRIBING RXMRAW");
-
     gps.subscribe<ublox_msgs::RxmRAW>(boost::bind(
         publish<ublox_msgs::RxmRAW>, _1, "rxmraw"), kSubscribeRate);
   }
@@ -1882,7 +1880,6 @@ void TimProduct::subscribe() {
    // Subscribe to RawX messages
    nh->param("publish/rxm/raw", enabled["rxm_raw"], enabled["rxm"]);
    if (enabled["rxm_raw"]) {
-     ROS_WARN_STREAM("TIM PRODUCT SUB");
      gps.subscribe<ublox_msgs::RxmRAWX>(boost::bind(
         publish<ublox_msgs::RxmRAWX>, _1, "rxmraw"), kSubscribeRate);
   }
