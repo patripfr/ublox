@@ -251,6 +251,7 @@ void AsyncWorker<StreamT>::readEnd(const boost::system::error_code& error,
     ROS_ERROR_THROTTLE(1, "U-Blox ASIO input buffer read error: %s, %li",
               error.message().c_str(),
               bytes_transfered);
+    sleep(0.1);
   } else if (bytes_transfered > 0) {
     in_buffer_size_ += bytes_transfered;
 
